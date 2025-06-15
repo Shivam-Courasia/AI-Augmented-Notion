@@ -6,7 +6,7 @@ import WorkspaceSidebar from "@/components/workspace/WorkspaceSidebar"
 import PageEditor from "@/components/workspace/PageEditor"
 import AIAssistant from "@/components/workspace/AIAssistant"
 import { Button } from "@/components/ui/button"
-import { Search, Bell, Settings, LogOut } from "lucide-react"
+import { Search, Bell, Settings, LogOut, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 
 export interface Page {
@@ -191,14 +191,18 @@ const Workspace = () => {
             <span className="text-sm text-gray-600 mr-2">
               Welcome, {user?.email}
             </span>
-            <Button 
-              variant="ghost" 
-              size="sm"
-              onClick={() => setShowAIAssistant(!showAIAssistant)}
-              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-            >
-              🤖 AI Assistant
-            </Button>
+            <div className="relative group">
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg blur opacity-75 group-hover:opacity-100 transition duration-200"></div>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => setShowAIAssistant(!showAIAssistant)}
+                className="relative bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 text-blue-600 hover:text-blue-700"
+              >
+                <Sparkles className="h-3 w-3 mr-1" />
+                AI Assistant
+              </Button>
+            </div>
             <Button variant="ghost" size="sm">
               <Bell className="h-4 w-4" />
             </Button>
@@ -228,12 +232,12 @@ const Workspace = () => {
           </div>
           
           {/* AI Assistant Panel */}
-          {showAIAssistant && (
-            <AIAssistant 
-              pages={pages}
-              onClose={() => setShowAIAssistant(false)}
-            />
-          )}
+          <AIAssistant 
+            isOpen={showAIAssistant}
+            pages={pages}
+            currentPage={currentPage}
+            onClose={() => setShowAIAssistant(false)}
+          />
         </div>
       </div>
     </div>

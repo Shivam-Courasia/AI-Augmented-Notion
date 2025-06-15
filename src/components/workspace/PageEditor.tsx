@@ -4,8 +4,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Link2, Tag, Clock, Sparkles } from "lucide-react"
+import { Link2, Tag, Clock, Sparkles, Loader2 } from "lucide-react"
 import type { Page } from "@/pages/Workspace"
+import { generateAITags } from "@/lib/ai"
+
+interface PageTag {
+  name: string;
+  isAIGenerated: boolean;
+}
 
 interface PageEditorProps {
   page: Page
@@ -19,6 +25,13 @@ const PageEditor = ({ page, onUpdatePage, pages }: PageEditorProps) => {
   const [newTag, setNewTag] = useState("")
   const [suggestedLinks, setSuggestedLinks] = useState<Page[]>([])
   const [showLinkSuggestions, setShowLinkSuggestions] = useState(false)
+  const [isGeneratingTags, setIsGeneratingTags] = useState(false)
+  
+  // Convert string tags to PageTag objects
+  const tags = page.tags.map(tag => ({
+    name: tag,
+    isAIGenerated: tag.startsWith('ai_')
+  }));
   
   // Auto-save functionality
   useEffect(() => {
@@ -52,14 +65,19 @@ const PageEditor = ({ page, onUpdatePage, pages }: PageEditorProps) => {
   }, [content, pages, page.id])
   
   const addTag = () => {
-    if (newTag.trim() && !page.tags.includes(newTag.trim())) {
-      onUpdatePage({ tags: [...page.tags, newTag.trim()] })
-      setNewTag("")
+    const tagName = newTag.trim();
+    if (tagName && !tags.some(tag => tag.name === tagName)) {
+      onUpdatePage({ 
+        tags: [...page.tags, tagName] // Store as regular string tag
+      });
+      setNewTag("");
     }
   }
   
   const removeTag = (tagToRemove: string) => {
-    onUpdatePage({ tags: page.tags.filter(tag => tag !== tagToRemove) })
+    onUpdatePage({ 
+      tags: page.tags.filter(tag => tag !== tagToRemove) 
+    });
   }
   
   const insertLink = (linkedPage: Page) => {
@@ -68,18 +86,32 @@ const PageEditor = ({ page, onUpdatePage, pages }: PageEditorProps) => {
     setShowLinkSuggestions(false)
   }
   
-  const generateAITags = () => {
-    // Simulate AI tag generation
-    const words = content.toLowerCase().match(/\b\w{4,}\b/g) || []
-    const commonWords = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'man', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too', 'use']
-    
-    const relevantWords = words
-      .filter(word => !commonWords.includes(word))
-      .filter(word => !page.tags.includes(word))
-      .slice(0, 3)
-    
-    if (relevantWords.length > 0) {
-      onUpdatePage({ tags: [...page.tags, ...relevantWords] })
+  const generateAITagsHandler = async () => {
+    if (!content.trim()) {
+      return;
+    }
+
+    setIsGeneratingTags(true);
+    try {
+      // Generate AI tags
+      const aiTags = await generateAITags(content);
+      
+      if (aiTags && aiTags.length > 0) {
+        // Filter out tags that already exist and add 'ai_' prefix
+        const newTags = aiTags
+          .filter((tag: string) => !page.tags.includes(tag) && !page.tags.includes(`ai_${tag}`))
+          .map((tag: string) => `ai_${tag}`);
+        
+        if (newTags.length > 0) {
+          onUpdatePage({ 
+            tags: [...page.tags, ...newTags] 
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error generating AI tags:', error);
+    } finally {
+      setIsGeneratingTags(false);
     }
   }
   
@@ -103,16 +135,20 @@ const PageEditor = ({ page, onUpdatePage, pages }: PageEditorProps) => {
         
         {/* Tags */}
         <div className="flex items-center gap-2 flex-wrap">
-          {page.tags.map(tag => (
-            <Badge 
-              key={tag} 
-              variant="secondary"
-              className="cursor-pointer hover:bg-gray-200"
-              onClick={() => removeTag(tag)}
-            >
-              {tag} ×
-            </Badge>
-          ))}
+          {tags.map(({ name, isAIGenerated }) => {
+            const displayName = isAIGenerated ? name.replace(/^ai_/, '') : name;
+            return (
+              <Badge 
+                key={name}
+                variant={isAIGenerated ? 'default' : 'secondary'}
+                className="cursor-pointer hover:bg-gray-200"
+                onClick={() => removeTag(name)}
+              >
+                {isAIGenerated && <Sparkles className="h-3 w-3 mr-1" />}
+                {displayName} ×
+              </Badge>
+            );
+          })}
           <div className="flex items-center gap-2">
             <Input
               value={newTag}
@@ -122,12 +158,52 @@ const PageEditor = ({ page, onUpdatePage, pages }: PageEditorProps) => {
               className="w-24 h-6 text-xs"
               size={newTag.length || 10}
             />
-            <Button onClick={generateAITags} variant="ghost" size="sm" className="text-xs">
-              <Sparkles className="h-3 w-3 mr-1" />
-              AI Tags
-            </Button>
+            <div className="relative group">
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg blur opacity-75 group-hover:opacity-100 transition duration-200"></div>
+              <Button 
+                onClick={generateAITagsHandler} 
+                variant="ghost" 
+                size="sm" 
+                className="relative bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 text-xs"
+                disabled={isGeneratingTags}
+              >
+                {isGeneratingTags ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3 w-3 mr-1" />
+                )}
+                AI Tags
+              </Button>
+            </div>
           </div>
         </div>
+        
+        <style dangerouslySetInnerHTML={{
+          __html: `
+            @keyframes sparkle {
+              0% { 
+                opacity: 0.6;
+                filter: drop-shadow(0 0 2px rgba(99, 102, 241, 0.8));
+              }
+              50% { 
+                opacity: 1;
+                filter: drop-shadow(0 0 4px rgba(99, 102, 241, 1));
+              }
+              100% { 
+                opacity: 0.6;
+                filter: drop-shadow(0 0 2px rgba(99, 102, 241, 0.8));
+              }
+            }
+            
+            .ai-button {
+              animation: sparkle 3s ease-in-out infinite;
+            }
+            
+            .ai-button:hover {
+              animation: none;
+            }
+          `
+        }} />
       </div>
       
       {/* AI Link Suggestions */}

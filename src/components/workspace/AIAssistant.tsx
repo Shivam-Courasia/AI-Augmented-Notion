@@ -1,240 +1,322 @@
+import { useState, useRef, useEffect, KeyboardEvent, useCallback } from 'react';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Send, X, Bot, Sparkles, Link as LinkIcon, Tag, Lightbulb, Loader2 } from 'lucide-react';
+import { Page } from '@/pages/Workspace';
+import { cn } from '@/lib/utils';
+import { useAI } from '@/contexts/AIContext';
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card } from "@/components/ui/card"
-import { X, Send, Sparkles, Search } from "lucide-react"
-import type { Page } from "@/pages/Workspace"
-
-interface AIAssistantProps {
-  pages: Page[]
-  onClose: () => void
-}
+type MessageType = 'user' | 'ai' | 'system';
 
 interface ChatMessage {
-  id: string
-  type: 'user' | 'ai'
-  content: string
-  timestamp: Date
+  id: string;
+  type: MessageType;
+  content: string;
+  timestamp: Date;
 }
 
-const AIAssistant = ({ pages, onClose }: AIAssistantProps) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: '1',
-      type: 'ai',
-      content: "Hi! I'm your AI assistant. I can help you search through your workspace, suggest connections between pages, and answer questions about your content. What would you like to know?",
-      timestamp: new Date()
-    }
-  ])
-  const [inputMessage, setInputMessage] = useState("")
-  const [isProcessing, setIsProcessing] = useState(false)
+interface AIAssistantProps {
+  isOpen: boolean;
+  onClose: () => void;
+  pages: Page[];
+  currentPage?: Page | null;
+}
+
+const AIAssistant = ({ isOpen, onClose, pages, currentPage }: AIAssistantProps) => {
+  const [inputMessage, setInputMessage] = useState('');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  const sendMessage = async () => {
-    if (!inputMessage.trim()) return
-    
+  const { 
+    isProcessing, 
+    askQuestion, 
+    findRelated, 
+    generateAIContent,
+    generateTags 
+  } = useAI();
+
+  // Scroll to bottom of messages when new messages are added
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Initialize with welcome message
+  useEffect(() => {
+    if (isOpen && messages.length === 0) {
+      setMessages([
+        {
+          id: '1',
+          type: 'ai',
+          content: "Hi! I'm your AI assistant. I can help you with your notes, find related content, and answer your questions. How can I assist you today?",
+          timestamp: new Date(),
+        },
+      ]);
+    }
+  }, [isOpen, messages.length]);
+
+  // Handle sending a message
+  const sendMessage = useCallback(async () => {
+    if (!inputMessage.trim() || isProcessing) return;
+
+    // Add user message to chat
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       type: 'user',
       content: inputMessage,
-      timestamp: new Date()
-    }
-    
-    setMessages(prev => [...prev, userMessage])
-    setInputMessage("")
-    setIsProcessing(true)
-    
-    // Simulate AI processing
-    setTimeout(() => {
-      const aiResponse = generateAIResponse(inputMessage, pages)
+      timestamp: new Date(),
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInputMessage('');
+
+    try {
+      let response = '';
+      const lowerMessage = inputMessage.toLowerCase();
+      
+      // Handle different types of queries
+      if (lowerMessage.includes('related') || lowerMessage.includes('similar')) {
+        // Find related pages
+        const related = await findRelated(inputMessage, pages);
+        if (related.length > 0) {
+          const relatedPages = related.map(r => {
+            const page = pages.find(p => p.id === r.id);
+            return page ? `- ${page.title} (relevance: ${Math.round(r.relevance * 100)}%)` : '';
+          }).filter(Boolean);
+          
+          response = relatedPages.length > 0
+            ? `Here are some related pages I found:\n\n${relatedPages.join('\n')}`
+            : "I couldn't find any directly related pages. Would you like me to search your notes for something specific?";
+        } else {
+          response = "I couldn't find any related pages. Try being more specific or check back later as you add more content.";
+        }
+      } 
+      else if (lowerMessage.includes('summarize') || lowerMessage.includes('summary')) {
+        // Generate a summary
+        if (currentPage) {
+          const prompt = `Please provide a concise summary of the following content. Focus on the key points and main ideas.\n\nTitle: ${currentPage.title}\nContent: ${currentPage.content.substring(0, 2000)}`;
+          response = await generateAIContent(prompt);
+        } else {
+          response = "Please open a page first so I can summarize its content.";
+        }
+      }
+      else if (lowerMessage.includes('suggest') || lowerMessage.includes('improve')) {
+        // Provide suggestions
+        if (currentPage) {
+          const prompt = `Provide 3-5 specific suggestions to improve the following note. Focus on content, structure, and clarity.\n\nTitle: ${currentPage.title}\nContent: ${currentPage.content.substring(0, 2000)}`;
+          response = await generateAIContent(prompt);
+        } else {
+          response = "Please open a page first so I can provide suggestions.";
+        }
+      }
+      else if (lowerMessage.includes('tag') || lowerMessage.includes('categorize')) {
+        // Generate tags
+        if (currentPage) {
+          const tags = await generateTags(currentPage.content);
+          response = tags.length > 0
+            ? `Here are some relevant tags for this page: ${tags.map(t => `#${t}`).join(', ')}`
+            : "I couldn't generate any specific tags. The content might be too short or generic.";
+        } else {
+          response = "Please open a page first so I can generate tags for it.";
+        }
+      }
+      else {
+        // General question answering
+        const context = currentPage 
+          ? `Current page: ${currentPage.title}\n${currentPage.content.substring(0, 1000)}`
+          : `Available pages: ${pages.slice(0, 5).map(p => p.title).join(', ')}`;
+          
+        response = await askQuestion(inputMessage, context);
+      }
+      
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         type: 'ai',
-        content: aiResponse,
-        timestamp: new Date()
-      }
+        content: response,
+        timestamp: new Date(),
+      };
+
+      setMessages(prev => [...prev, aiMessage]);
+    } catch (error) {
+      console.error('Error getting AI response:', error);
       
-      setMessages(prev => [...prev, aiMessage])
-      setIsProcessing(false)
-    }, 1500)
-  }
-  
-  const generateAIResponse = (query: string, pages: Page[]): string => {
-    const lowerQuery = query.toLowerCase()
-    
-    // Search functionality
-    if (lowerQuery.includes('search') || lowerQuery.includes('find')) {
-      const searchTerms = lowerQuery.split(' ').filter(word => 
-        !['search', 'find', 'for', 'about', 'what', 'where', 'when', 'how'].includes(word)
-      )
+      const errorMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        type: 'ai',
+        content: 'Sorry, I encountered an error while processing your request. Please try again.',
+        timestamp: new Date(),
+      };
       
-      const relevantPages = pages.filter(page => 
-        searchTerms.some(term => 
-          page.title.toLowerCase().includes(term) || 
-          page.content.toLowerCase().includes(term) ||
-          page.tags.some(tag => tag.toLowerCase().includes(term))
-        )
-      )
-      
-      if (relevantPages.length > 0) {
-        return `I found ${relevantPages.length} page(s) that might be relevant:\n\n${
-          relevantPages.map(page => `• **${page.title}** - ${page.content.substring(0, 100)}...`)
-            .join('\n')
-        }`
-      } else {
-        return "I couldn't find any pages matching your search. Try using different keywords or create a new page about this topic!"
-      }
+      setMessages(prev => [...prev, errorMessage]);
+    }
+  }, [inputMessage, pages, currentPage, askQuestion, findRelated, generateAIContent, generateTags, isProcessing]);
+
+  // Handle keyboard events
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  // Quick action handlers
+  const handleQuickAction = (action: string) => {
+    let message = '';
+    
+    switch (action) {
+      case 'summarize':
+        message = "Can you summarize this page for me?";
+        break;
+      case 'related':
+        message = "What other pages are related to this one?";
+        break;
+      case 'suggestions':
+        message = "Do you have any suggestions for improving this page?";
+        break;
+      case 'tags':
+        message = "What tags would you suggest for this page?";
+        break;
+      default:
+        return;
     }
     
-    // Connection suggestions
-    if (lowerQuery.includes('connect') || lowerQuery.includes('link') || lowerQuery.includes('relate')) {
-      const connections = findConnections(pages)
-      if (connections.length > 0) {
-        return `Here are some potential connections I found between your pages:\n\n${
-          connections.map(conn => `• **${conn.page1}** ↔ **${conn.page2}**: ${conn.reason}`)
-            .join('\n')
-        }`
-      } else {
-        return "I don't see any obvious connections between your current pages yet. As you add more content, I'll be able to suggest more meaningful links!"
-      }
-    }
-    
-    // General questions
-    if (lowerQuery.includes('summary') || lowerQuery.includes('overview')) {
-      return `Here's an overview of your workspace:\n\n• **Total pages**: ${pages.length}\n• **Total tags**: ${[...new Set(pages.flatMap(p => p.tags))].length}\n• **Most recent**: ${pages.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]?.title}\n\nYour workspace covers topics like: ${[...new Set(pages.flatMap(p => p.tags))].join(', ')}`
-    }
-    
-    // Default response
-    return "I understand you're asking about your workspace. I can help you:\n\n• **Search** through your pages\n• **Find connections** between different topics\n• **Suggest tags** for better organization\n• **Summarize** your content\n\nTry asking me something like 'Search for project ideas' or 'What connections do you see?'"
-  }
-  
-  const findConnections = (pages: Page[]): Array<{page1: string, page2: string, reason: string}> => {
-    const connections = []
-    
-    for (let i = 0; i < pages.length; i++) {
-      for (let j = i + 1; j < pages.length; j++) {
-        const page1 = pages[i]
-        const page2 = pages[j]
-        
-        // Check for common tags
-        const commonTags = page1.tags.filter(tag => page2.tags.includes(tag))
-        if (commonTags.length > 0) {
-          connections.push({
-            page1: page1.title,
-            page2: page2.title,
-            reason: `Both tagged with: ${commonTags.join(', ')}`
-          })
-        }
-        
-        // Check for similar words in content
-        const words1 = page1.content.toLowerCase().split(/\s+/).filter(w => w.length > 4)
-        const words2 = page2.content.toLowerCase().split(/\s+/).filter(w => w.length > 4)
-        const commonWords = words1.filter(word => words2.includes(word))
-        
-        if (commonWords.length > 2) {
-          connections.push({
-            page1: page1.title,
-            page2: page2.title,
-            reason: `Similar content themes`
-          })
-        }
-      }
-    }
-    
-    return connections.slice(0, 3) // Limit to top 3 connections
-  }
-  
-  const quickActions = [
-    "Search through all pages",
-    "Find related content",
-    "Suggest new tags",
-    "Show workspace overview"
-  ]
-  
+    setInputMessage(message);
+    // Small delay to allow state to update before sending
+    setTimeout(() => {
+      sendMessage();
+    }, 100);
+  };
+
+  if (!isOpen) return null;
+
   return (
-    <div className="w-80 bg-white border-l border-gray-200 flex flex-col">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-blue-600" />
-          <span className="font-semibold text-gray-900">AI Assistant</span>
-        </div>
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
+    <div className="fixed inset-0 z-50 overflow-hidden">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       
-      {/* Quick Actions */}
-      <div className="p-4 border-b border-gray-200">
-        <div className="text-xs font-medium text-gray-500 mb-2">Quick Actions</div>
-        <div className="space-y-1">
-          {quickActions.map(action => (
-            <Button
-              key={action}
-              variant="ghost"
-              size="sm"
-              className="w-full justify-start text-xs h-8"
-              onClick={() => setInputMessage(action)}
-            >
-              {action}
-            </Button>
-          ))}
-        </div>
-      </div>
-      
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map(message => (
-          <div key={message.id} className={`${message.type === 'user' ? 'ml-8' : 'mr-8'}`}>
-            <Card className={`p-3 ${
-              message.type === 'user' 
-                ? 'bg-blue-600 text-white ml-4' 
-                : 'bg-gray-50'
-            }`}>
-              <div className="text-sm whitespace-pre-line">{message.content}</div>
-              <div className={`text-xs mt-2 ${
-                message.type === 'user' ? 'text-blue-100' : 'text-gray-500'
-              }`}>
-                {message.timestamp.toLocaleTimeString()}
-              </div>
-            </Card>
+      <div className="absolute right-0 top-0 h-full w-full max-w-md bg-white dark:bg-gray-900 shadow-xl flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800">
+          <div className="flex items-center space-x-2">
+            <Bot className="h-5 w-5 text-blue-500" />
+            <h2 className="text-lg font-semibold">AI Assistant</h2>
           </div>
-        ))}
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={onClose}
+            className="h-8 w-8"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
         
-        {isProcessing && (
-          <div className="mr-8">
-            <Card className="p-3 bg-gray-50">
-              <div className="flex items-center gap-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                <span className="text-sm text-gray-600">AI is thinking...</span>
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {messages.map((message) => (
+            <div 
+              key={message.id}
+              className={cn(
+                'flex',
+                message.type === 'user' ? 'justify-end' : 'justify-start'
+              )}
+            >
+              <div 
+                className={cn(
+                  'max-w-[80%] rounded-lg px-4 py-2',
+                  message.type === 'user' 
+                    ? 'bg-blue-500 text-white' 
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+                )}
+              >
+                <div className="whitespace-pre-wrap">{message.content}</div>
+                <div className="text-xs opacity-70 mt-1">
+                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
               </div>
-            </Card>
+            </div>
+          ))}
+          {isProcessing && (
+            <div className="flex items-center space-x-2 text-gray-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Thinking...</span>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+        
+        {/* Quick Actions */}
+        {currentPage && (
+          <div className="px-4 pb-2 flex flex-wrap gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="text-xs h-7"
+              onClick={() => handleQuickAction('summarize')}
+              disabled={isProcessing}
+            >
+              <Sparkles className="h-3 w-3 mr-1" />
+              Summarize
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="text-xs h-7"
+              onClick={() => handleQuickAction('related')}
+              disabled={isProcessing}
+            >
+              <LinkIcon className="h-3 w-3 mr-1" />
+              Find Related
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="text-xs h-7"
+              onClick={() => handleQuickAction('suggestions')}
+              disabled={isProcessing}
+            >
+              <Lightbulb className="h-3 w-3 mr-1" />
+              Get Suggestions
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="text-xs h-7"
+              onClick={() => handleQuickAction('tags')}
+              disabled={isProcessing}
+            >
+              <Tag className="h-3 w-3 mr-1" />
+              Suggest Tags
+            </Button>
           </div>
         )}
-      </div>
-      
-      {/* Input */}
-      <div className="p-4 border-t border-gray-200">
-        <div className="flex gap-2">
-          <Input
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder="Ask me anything..."
-            className="text-sm"
-            disabled={isProcessing}
-          />
-          <Button 
-            onClick={sendMessage}
-            disabled={!inputMessage.trim() || isProcessing}
-            size="sm"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+        
+        {/* Input */}
+        <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+          <div className="relative">
+            <Textarea
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask me anything about your notes..."
+              className="min-h-[60px] pr-12 resize-none"
+              disabled={isProcessing}
+            />
+            <Button 
+              size="icon" 
+              className="absolute right-2 bottom-2 h-8 w-8"
+              onClick={sendMessage}
+              disabled={!inputMessage.trim() || isProcessing}
+            >
+              {isProcessing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default AIAssistant
+export default AIAssistant;
