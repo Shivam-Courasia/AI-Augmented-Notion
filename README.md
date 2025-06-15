@@ -1,4 +1,4 @@
-# Hyperflow Knowledge
+# AI-Augmented Notion Clone
 
 This project is a personal knowledge management system with AI-powered features, built with React, Vite, and Supabase.
 
@@ -99,6 +99,3 @@ The application should now be running at `http://localhost:8080` (or another por
 *   **`net::ERR_NAME_NOT_RESOLVED`**: This error indicates that your application cannot resolve the Supabase URL. Double-check `VITE_SUPABASE_URL` in your `.env` file.
 *   **Features not working**: Ensure all `npm install` commands were successful and there are no build errors in your terminal. Check the browser console for JavaScript errors.
 *   **AI Features**: If AI features are not working, verify `VITE_GEMINI_API_KEY` in your `.env` file and ensure the Gemini API is enabled in your Google Cloud Project.
-*   **Delete Feature**: If the delete feature is not working, check the browser console for network errors when attempting to delete, and ensure your Supabase RLS policies are correctly configured to allow deletion.
-
-Feel free to open an issue in the repository if you encounter any further problems.
