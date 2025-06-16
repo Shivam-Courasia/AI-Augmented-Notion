@@ -10,7 +10,7 @@ This application includes the following features and updates:
 2.  **Tiptap Editor Integration**: The document creation and editing experience is enhanced using the Tiptap rich text editor, providing more formatting options.
 3.  **AI Suggested Links**: The application suggests related links from the internet or other documents based on the content of the current document, leveraging AI for better relevance.
 4.  **Knowledge Graph Visualizer**: A live, zoomable, and interactive graph visually represents how pages and tags are connected, with color-coded node types.
-5.  **Smart Tags**: Placeholder for a feature that will allow AI to generate relevant tags for your pages.
+5.  **Smart Tags**: Placeholder for  AI to generate relevant tags for your pages.
 6.  **Notion-like Dark Theme**: The application's theme has been updated to a Notion-like dark mode for improved aesthetics and user experience.
 7.  **Notion-like Slash Commands**: The Tiptap editor now supports Notion-like "/" shortcuts for quickly inserting various content blocks (e.g., headings, lists, code blocks).
 8.  **Document Title as H1**: The document title is now rendered as an `<h1>` element for better semantic structure.
