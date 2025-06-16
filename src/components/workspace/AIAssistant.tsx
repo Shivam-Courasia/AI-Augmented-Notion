@@ -5,6 +5,7 @@ import { Send, X, Bot, Sparkles, Link as LinkIcon, Tag, Lightbulb, Loader2 } fro
 import { Page } from '@/pages/Workspace';
 import { cn } from '@/lib/utils';
 import { useAI } from '@/contexts/AIContext';
+import { semanticAnswer } from '@/lib/ai';
 
 type MessageType = 'user' | 'ai' | 'system';
 
@@ -71,6 +72,7 @@ const AIAssistant = ({ isOpen, onClose, pages, currentPage }: AIAssistantProps) 
 
     try {
       let response = '';
+      let references: { id: string; title: string }[] = [];
       const lowerMessage = inputMessage.toLowerCase();
       
       // Handle different types of queries
@@ -108,45 +110,45 @@ const AIAssistant = ({ isOpen, onClose, pages, currentPage }: AIAssistantProps) 
           response = "Please open a page first so I can provide suggestions.";
         }
       }
-      else if (lowerMessage.includes('tag') || lowerMessage.includes('categorize')) {
+      else if (lowerMessage.includes('tag') || lowerMessage.includes('label')) {
         // Generate tags
         if (currentPage) {
-          const tags = await generateTags(currentPage.content);
+          const prompt = `Generate 3-5 relevant tags for the following note.\n\nTitle: ${currentPage.title}\nContent: ${currentPage.content.substring(0, 2000)}`;
+          const tags = await generateTags(prompt);
           response = tags.length > 0
-            ? `Here are some relevant tags for this page: ${tags.map(t => `#${t}`).join(', ')}`
-            : "I couldn't generate any specific tags. The content might be too short or generic.";
+            ? `Suggested tags: ${tags.join(', ')}` // Changed from ${tags.map(t => `#${t}`).join(', ')} to ${tags.join(', ')}
+            : "I couldn't generate tags for this note.";
         } else {
-          response = "Please open a page first so I can generate tags for it.";
+          response = "Please open a page first so I can suggest tags.";
         }
       }
       else {
-        // General question answering
-        const context = currentPage 
-          ? `Current page: ${currentPage.title}\n${currentPage.content.substring(0, 1000)}`
-          : `Available pages: ${pages.slice(0, 5).map(p => p.title).join(', ')}`;
-          
-        response = await askQuestion(inputMessage, context);
+        // Default: semantic Q&A
+        const qa = await semanticAnswer(inputMessage, pages);
+        response = qa.answer;
+        references = qa.references || [];
       }
-      
+
+      // Add AI response to chat
+      let aiContent = response;
+      if (references && references.length > 0) {
+        aiContent += '\n\nReferenced notes:';
+        aiContent += '\n' + references.map(ref => `- ${ref.title}`).join('\n');
+      }
       const aiMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: Date.now().toString() + '-ai',
         type: 'ai',
-        content: response,
+        content: aiContent,
         timestamp: new Date(),
       };
-
       setMessages(prev => [...prev, aiMessage]);
-    } catch (error) {
-      console.error('Error getting AI response:', error);
-      
-      const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        type: 'ai',
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString() + '-err',
+        type: 'system',
         content: 'Sorry, I encountered an error while processing your request. Please try again.',
         timestamp: new Date(),
-      };
-      
-      setMessages(prev => [...prev, errorMessage]);
+      }]);
     }
   }, [inputMessage, pages, currentPage, askQuestion, findRelated, generateAIContent, generateTags, isProcessing]);
 

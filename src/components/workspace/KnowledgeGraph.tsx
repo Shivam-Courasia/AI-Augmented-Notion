@@ -1,6 +1,7 @@
 import React, { useCallback, useRef, useState, Suspense, lazy } from 'react';
 import { Button } from "@/components/ui/button";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { cosineSimilarity } from '@/lib/ai';
 
 // Lazy load the force graph component
 const ForceGraph = lazy(() => import('react-force-graph').then(mod => ({
@@ -54,6 +55,8 @@ const NODE_TYPES = {
   TAG: 'tag',
 };
 
+const SEMANTIC_LINK_COLOR = '#f59e42'; // orange-400
+
 export default function KnowledgeGraph({ 
   pages, 
   currentPageId, 
@@ -65,10 +68,10 @@ export default function KnowledgeGraph({
   const [hoverNode, setHoverNode] = useState<GraphNode | null>(null);
   const graphRef = useRef<any>(null);
   
-  // Process pages and tags into nodes and links
+  // Process pages and tags into nodes and links, including semantic links
   const { nodes, links } = React.useMemo(() => {
     const nodesMap = new Map<string, GraphNode>();
-    const links: GraphLink[] = [];
+    const links: (GraphLink & { type?: string; relevance?: number })[] = [];
     const addedLinks = new Set<string>();
 
     // Add pages as nodes
@@ -92,6 +95,7 @@ export default function KnowledgeGraph({
             source: page.parentId,
             target: page.id,
             value: 1,
+            type: 'parent',
           });
           addedLinks.add(linkKey);
         }
@@ -120,12 +124,39 @@ export default function KnowledgeGraph({
               source: page.id,
               target: tagId,
               value: 0.5,
+              type: 'tag',
             });
             addedLinks.add(tagLinkKey);
           }
         });
       }
     });
+
+    // Add semantic links (AI-discovered)
+    // For every pair of pages with embeddings, add a link if similarity > 0.75
+    const threshold = 0.75;
+    for (let i = 0; i < pages.length; i++) {
+      const a = pages[i] as any;
+      if (!Array.isArray(a.embedding)) continue;
+      for (let j = i + 1; j < pages.length; j++) {
+        const b = pages[j] as any;
+        if (!Array.isArray(b.embedding)) continue;
+        const sim = cosineSimilarity(a.embedding, b.embedding);
+        if (sim > threshold) {
+          const key = `${a.id}-${b.id}-semantic`;
+          if (!addedLinks.has(key)) {
+            links.push({
+              source: a.id,
+              target: b.id,
+              value: 0.7,
+              type: 'semantic',
+              relevance: sim,
+            });
+            addedLinks.add(key);
+          }
+        }
+      }
+    }
 
     return {
       nodes: Array.from(nodesMap.values()),
@@ -287,10 +318,18 @@ export default function KnowledgeGraph({
           linkDirectionalParticles={getLinkParticles}
           linkDirectionalParticleWidth={2}
           nodeCanvasObject={paintNode}
-          linkColor={getLinkColor}
-          linkWidth={1}
+          linkColor={(link: any) => link.type === 'semantic' ? SEMANTIC_LINK_COLOR : undefined}
+          linkWidth={(link: any) => link.type === 'semantic' ? 2.5 : 1}
           linkOpacity={0.6}
           linkDirectionalParticleColor="rgba(100, 100, 100, 0.5)"
+          linkLabel={(link: any) => {
+            if (link.type === 'semantic' && typeof link.relevance === 'number') {
+              return `Semantic: ${Math.round(link.relevance * 100)}%`;
+            }
+            if (link.type === 'parent') return 'Parent-Child';
+            if (link.type === 'tag') return 'Tag';
+            return '';
+          }}
           onNodeHover={handleNodeHover}
           onNodeClick={handleNodeClick}
           onBackgroundClick={() => updateHighlight(null)}
@@ -309,9 +348,13 @@ export default function KnowledgeGraph({
           <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
           <span>Tags</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mb-1">
           <span className="inline-block w-2 h-2 rounded-full bg-purple-500"></span>
           <span>Current Page</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full" style={{ background: SEMANTIC_LINK_COLOR }}></span>
+          <span>Semantic Link</span>
         </div>
       </div>
     </div>

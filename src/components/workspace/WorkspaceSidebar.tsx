@@ -6,13 +6,15 @@ import { Plus, Search, FileText, ChevronRight, ChevronDown } from "lucide-react"
 import type { Page } from "@/pages/Workspace"
 
 interface WorkspaceSidebarProps {
-  pages: Page[]
-  currentPageId: string | null
-  onPageSelect: (pageId: string) => void
-  onNewPage: (title?: string, parentId?: string) => void
+  pages: Page[];
+  currentPageId: string | null;
+  onPageSelect: (id: string) => void;
+  onNewPage: (title?: string, parentId?: string, content?: string) => void;
+  onOpenLinkModal?: () => void;
+  onOpenGraph?: () => void;
 }
 
-const WorkspaceSidebar = ({ pages, currentPageId, onPageSelect, onNewPage }: WorkspaceSidebarProps) => {
+const WorkspaceSidebar = ({ pages, currentPageId, onPageSelect, onNewPage, onOpenLinkModal, onOpenGraph }: WorkspaceSidebarProps) => {
   const [searchQuery, setSearchQuery] = useState("")
   const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set())
   
@@ -131,13 +133,17 @@ const WorkspaceSidebar = ({ pages, currentPageId, onPageSelect, onNewPage }: Wor
       {/* AI Features */}
       <div className="p-4 border-t border-gray-200 bg-gray-50">
         <div className="space-y-2">
-          <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
-            🔗 Auto-Link Suggestions
+          <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={onOpenLinkModal}>
+            🔗 AI-Link Suggestions
           </Button>
-          <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
+          <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={onOpenGraph ? onOpenGraph : () => {
+            alert('Knowledge Graph: This feature will visualize the relationships between your notes and tags. (Coming soon!)');
+          }}>
             🌐 Knowledge Graph
           </Button>
-          <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
+          <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={() => {
+            alert('Smart Tags: This feature will help you organize your notes with AI-generated tags. (Already available in the note editor!)');
+          }}>
             🏷️ Smart Tags
           </Button>
         </div>
@@ -147,3 +153,10 @@ const WorkspaceSidebar = ({ pages, currentPageId, onPageSelect, onNewPage }: Wor
 }
 
 export default WorkspaceSidebar
+
+// What does 'Auto-Link Suggestions' do?
+// This feature will analyze the content of your current note and, using AI embeddings and semantic similarity, suggest links to other notes in your workspace that are most relevant. This helps you quickly interconnect related knowledge without manual searching. (Feature coming soon!)
+
+// What does 'Knowledge Graph' do?
+// This feature will visualize your workspace as a graph, showing connections between notes, tags, and semantic links. You can explore how your knowledge is structured and discover hidden relationships. (Feature coming soon!)
+

@@ -1,0 +1,86 @@
+/* Notion-style SimpleMDE toolbar improvements */
+
+/* Make toolbar always visible, not overlapping */
+.editor-toolbar {
+  background: #fff;
+  border-radius: 8px 8px 0 0;
+  border: 1px solid #e5e7eb;
+  border-bottom: none;
+  box-shadow: 0 2px 8px 0 rgba(60,60,60,0.04);
+  margin-bottom: 16px;
+  padding: 0 8px;
+  display: flex;
+  flex-wrap: wrap;
+  z-index: 10;
+  position: sticky;
+  top: 0;
+}
+
+/* Add spacing between toolbar icons */
+.editor-toolbar a {
+    margin: 0 20px !important; /* Increase horizontal gap */
+    padding: 8px 8px;
+    border-radius: 6px;
+    transition: background 0.2s;
+    display: inline-flex;
+    align-items: center;
+  }
+
+.editor-toolbar a.active, .editor-toolbar a:hover {
+  background: #f3f4f6;
+}
+
+/* Ensure the toolbar is above the content */
+.editor-toolbar.fullscreen {
+  border-radius: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+}
+
+/* Prevent toolbar from overlapping the title/tags */
+@media (max-width: 700px) {
+  .editor-toolbar {
+    border-radius: 0;
+    padding: 0 2px;
+  }
+}
+
+/* Add extra space below toolbar for clarity */
+.CodeMirror {
+  margin-top: 0 !important;
+}
+
+/* Meta time row styling for created/edited time */
+.meta-time-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.meta-time-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: linear-gradient(90deg, #6a93ff 0%, #a4e0ff 100%);
+  color: #232a37;
+  border-radius: 999px;
+  padding: 2px 12px 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px 0 rgba(80,120,200,0.10);
+  letter-spacing: 0.01em;
+  transition: background 0.2s, color 0.2s;
+}
+
+.meta-time-icon {
+  color: #3967d2;
+  width: 15px !important;
+  height: 15px !important;
+  margin-right: 1px;
+  opacity: 0.85;
+}
+

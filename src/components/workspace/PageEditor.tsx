@@ -1,12 +1,13 @@
-
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Link2, Tag, Clock, Sparkles, Loader2 } from "lucide-react"
 import type { Page } from "@/pages/Workspace"
-import { generateAITags } from "@/lib/ai"
+import { generateAITags, findSimilarPages } from "@/lib/ai"
+import SimpleMDE from "react-simplemde-editor"
+import "simplemde/dist/simplemde.min.css"
+import "./PageEditor.mde.css"
 
 interface PageTag {
   name: string;
@@ -17,15 +18,18 @@ interface PageEditorProps {
   page: Page
   onUpdatePage: (updates: Partial<Page>) => void
   pages: Page[]
+  onDeletePage?: (pageId: string) => void
 }
 
-const PageEditor = ({ page, onUpdatePage, pages }: PageEditorProps) => {
+const PageEditor = ({ page, onUpdatePage, pages, onDeletePage }: PageEditorProps) => {
   const [title, setTitle] = useState(page.title)
   const [content, setContent] = useState(page.content)
   const [newTag, setNewTag] = useState("")
-  const [suggestedLinks, setSuggestedLinks] = useState<Page[]>([])
+  const [suggestedLinks, setSuggestedLinks] = useState<{page: Page, relevance: number}[]>([])
   const [showLinkSuggestions, setShowLinkSuggestions] = useState(false)
   const [isGeneratingTags, setIsGeneratingTags] = useState(false)
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
+  const [linkError, setLinkError] = useState<string | null>(null)
   
   // Convert string tags to PageTag objects
   const tags = page.tags.map(tag => ({
@@ -37,30 +41,66 @@ const PageEditor = ({ page, onUpdatePage, pages }: PageEditorProps) => {
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (title !== page.title || content !== page.content) {
-        onUpdatePage({ title, content })
+        onUpdatePage({
+          id: page.id, // ensure id is included
+          title,
+          content,
+          updatedAt: new Date().toISOString()
+        })
       }
     }, 1000)
     
     return () => clearTimeout(timeoutId)
   }, [title, content, page.title, page.content, onUpdatePage])
   
-  // AI Auto-linking simulation
+  // AI Semantic Auto-linking (debounced)
   useEffect(() => {
-    if (content.length > 50) {
-      const suggestions = pages
-        .filter(p => p.id !== page.id)
-        .filter(p => {
-          const contentWords = content.toLowerCase().split(/\s+/)
-          const pageWords = p.title.toLowerCase().split(/\s+/)
-          return pageWords.some(word => contentWords.includes(word) && word.length > 3)
-        })
-        .slice(0, 3)
-      
-      setSuggestedLinks(suggestions)
-      setShowLinkSuggestions(suggestions.length > 0)
-    } else {
+    // Only trigger for sufficient content length
+    if (content.length < 50) {
       setSuggestedLinks([])
       setShowLinkSuggestions(false)
+      setIsLoadingSuggestions(false)
+      setLinkError(null)
+      return
+    }
+    let cancelled = false
+    setIsLoadingSuggestions(true)
+    setLinkError(null)
+    const timeoutId = setTimeout(async () => {
+      try {
+        // Prepare pages with embeddings (assume .embedding exists or is undefined)
+        const candidates = pages.filter(p => p.id !== page.id)
+        // If no candidates or no embeddings, fallback to empty
+        if (!candidates.length || !candidates.some(p => Array.isArray(p.embedding))) {
+          setSuggestedLinks([])
+          setShowLinkSuggestions(false)
+          setIsLoadingSuggestions(false)
+          setLinkError("AI linking requires page embeddings. Please enable embedding support.")
+          return
+        }
+        const similar = await findSimilarPages(content, candidates as any)
+        if (cancelled) return
+        // Map back to Page objects with relevance
+        const links = similar
+          .map(s => {
+            const match = candidates.find(p => p.id === s.id)
+            return match ? { page: match, relevance: s.relevance } : null
+          })
+          .filter(Boolean) as {page: Page, relevance: number}[]
+        setSuggestedLinks(links)
+        setShowLinkSuggestions(links.length > 0)
+        setIsLoadingSuggestions(false)
+        setLinkError(null)
+      } catch (err: any) {
+        setSuggestedLinks([])
+        setShowLinkSuggestions(false)
+        setIsLoadingSuggestions(false)
+        setLinkError(err?.message || "AI linking unavailable.")
+      }
+    }, 600) // debounce
+    return () => {
+      cancelled = true
+      clearTimeout(timeoutId)
     }
   }, [content, pages, page.id])
   
@@ -98,8 +138,12 @@ const PageEditor = ({ page, onUpdatePage, pages }: PageEditorProps) => {
       
       if (aiTags && aiTags.length > 0) {
         // Filter out tags that already exist and add 'ai_' prefix
+        const aiTagArtifacts = ["json", "array", "object", "string", "number", "null", "undefined", "true", "false", "yes", "no", "tag", "tags", "list", "data", "info", "information", "response", "output", "result"];
         const newTags = aiTags
-          .filter((tag: string) => !page.tags.includes(tag) && !page.tags.includes(`ai_${tag}`))
+          .filter((tag: string) => {
+            const cleaned = String(tag).trim().toLowerCase();
+            return cleaned && !aiTagArtifacts.includes(cleaned) && !page.tags.includes(tag) && !page.tags.includes(`ai_${tag}`);
+          })
           .map((tag: string) => `ai_${tag}`);
         
         if (newTags.length > 0) {
@@ -116,22 +160,47 @@ const PageEditor = ({ page, onUpdatePage, pages }: PageEditorProps) => {
   }
   
   return (
-    <div className="h-full flex flex-col bg-white">
+    <>
+      <div className="h-full flex flex-col bg-white">
       {/* Page Header */}
-      <div className="border-b border-gray-200 p-6">
-        <Input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="text-3xl font-bold border-none p-0 shadow-none focus-visible:ring-0 mb-4"
-          placeholder="Untitled"
-        />
-        
-        <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
-          <div className="flex items-center gap-1">
-            <Clock className="h-4 w-4" />
-            <span>Last edited {page.updatedAt.toLocaleDateString()}</span>
-          </div>
+      <div className="border-b border-gray-200 p-6 flex items-center justify-between">
+        <div className="flex-1">
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="text-3xl font-bold border-none p-0 shadow-none focus-visible:ring-0 mb-4"
+            placeholder="Untitled"
+          />
         </div>
+        {onDeletePage && (
+          <Button
+            variant="destructive"
+            size="sm"
+            className="ml-4"
+            onClick={() => {
+              if (window.confirm('Are you sure you want to delete this page? This action cannot be undone.')) {
+                onDeletePage(page.id);
+              }
+            }}
+          >
+            Delete Page
+          </Button>
+        )}
+      </div>
+
+      <div className="meta-time-row">
+  <div className="meta-time-item">
+    <Clock className="meta-time-icon" />
+    <span>CreatedAt {page.createdAt.toLocaleDateString()} {page.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+  </div>
+</div>
+        
+<div className="meta-time-row">
+  <div className="meta-time-item">
+    <Clock className="meta-time-icon" />
+    <span>UpdatedAt {page.updatedAt.toLocaleDateString()} {page.updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+  </div>
+</div>
         
         {/* Tags */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -177,77 +246,66 @@ const PageEditor = ({ page, onUpdatePage, pages }: PageEditorProps) => {
             </div>
           </div>
         </div>
-        
-        <style dangerouslySetInnerHTML={{
-          __html: `
-            @keyframes sparkle {
-              0% { 
-                opacity: 0.6;
-                filter: drop-shadow(0 0 2px rgba(99, 102, 241, 0.8));
-              }
-              50% { 
-                opacity: 1;
-                filter: drop-shadow(0 0 4px rgba(99, 102, 241, 1));
-              }
-              100% { 
-                opacity: 0.6;
-                filter: drop-shadow(0 0 2px rgba(99, 102, 241, 0.8));
-              }
-            }
-            
-            .ai-button {
-              animation: sparkle 3s ease-in-out infinite;
-            }
-            
-            .ai-button:hover {
-              animation: none;
-            }
-          `
-        }} />
-      </div>
       
       {/* AI Link Suggestions */}
-      {showLinkSuggestions && (
+      {(showLinkSuggestions || isLoadingSuggestions || linkError) && (
         <div className="bg-blue-50 border-b border-blue-200 p-4">
           <div className="flex items-center gap-2 mb-2">
             <Link2 className="h-4 w-4 text-blue-600" />
             <span className="text-sm font-medium text-blue-900">AI Suggested Links</span>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            {suggestedLinks.map(linkedPage => (
-              <Button
-                key={linkedPage.id}
-                onClick={() => insertLink(linkedPage)}
-                variant="outline"
-                size="sm"
-                className="text-xs bg-white hover:bg-blue-100 border-blue-200"
-              >
-                + Link to "{linkedPage.title}"
-              </Button>
-            ))}
-          </div>
+          {isLoadingSuggestions && (
+            <div className="flex items-center gap-2 text-blue-700 text-xs">
+              <Loader2 className="h-4 w-4 animate-spin" /> Generating smart link suggestions...
+            </div>
+          )}
+          {linkError && (
+            <div className="text-xs text-red-500 py-1">{linkError}</div>
+          )}
+          {!isLoadingSuggestions && !linkError && suggestedLinks.length > 0 && (
+            <div className="flex gap-2 flex-wrap">
+              {suggestedLinks.map(({ page: linkedPage, relevance }) => (
+                <Button
+                  key={linkedPage.id}
+                  onClick={() => insertLink(linkedPage)}
+                  variant="outline"
+                  size="sm"
+                  className="text-xs bg-white hover:bg-blue-100 border-blue-200"
+                >
+                  + Link to "{linkedPage.title}" <span className="ml-1 text-[10px] text-blue-700">({Math.round(relevance * 100)}%)</span>
+                </Button>
+              ))}
+            </div>
+          )}
+          {!isLoadingSuggestions && !linkError && suggestedLinks.length === 0 && (
+            <div className="text-xs text-blue-700">No strong semantic matches found yet. Add more content to see suggestions.</div>
+          )}
         </div>
       )}
       
-      {/* Editor */}
-      <div className="flex-1 p-6">
-        <Textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="Start writing... Use markdown for formatting"
-          className="w-full h-full border-none shadow-none resize-none focus-visible:ring-0 text-base leading-relaxed"
-        />
-      </div>
-      
-      {/* Markdown Preview Hint */}
-      <div className="border-t border-gray-200 p-4 bg-gray-50">
-        <div className="text-xs text-gray-500 flex items-center gap-4">
-          <span>💡 Tip: Use **bold**, *italic*, # headers, and - lists for formatting</span>
-          <span className="ml-auto">Auto-saved</span>
+      {/* Notion-style Editor Area */}
+      <div className="flex-1 flex flex-col justify-start bg-[#f7f8fa] px-0 pt-2 pb-8 min-h-[80vh]">
+        <div className="w-full bg-white px-8 pt-6 pb-12">
+          <SimpleMDE
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="Start writing... Use markdown for formatting"
+            className="w-full min-h-[400px] border-none shadow-none resize-none focus-visible:ring-0 text-[1.15rem] leading-[2.1] font-sans bg-white"
+            style={{ fontFamily: 'Inter, Segoe UI, Arial, sans-serif', fontSize: '1.15rem', background: 'white', lineHeight: '2.1' }}
+          />
+          {/* Markdown Preview Hint */}
+          <div className="pt-3 mt-2 text-xs text-gray-400 flex items-center gap-4">
+            <span>💡 Tip: Use **bold**, *italic*, # headers, and - lists for formatting</span>
+            <span className="ml-auto">Auto-saved</span>
+          </div>
         </div>
       </div>
     </div>
+    </>
   )
 }
 
 export default PageEditor
+
+
+

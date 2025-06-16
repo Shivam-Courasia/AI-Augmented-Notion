@@ -11,6 +11,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Workspace from "./pages/Workspace";
 import NotFound from "./pages/NotFound";
+import WorkspaceGraphPage from "./pages/WorkspaceGraphPage";
 
 const queryClient = new QueryClient();
 
@@ -32,6 +33,14 @@ const App = () => (
                     <Workspace />
                   </ProtectedRoute>
                 } 
+              />
+              <Route
+                path="/workspace/graph"
+                element={
+                  <ProtectedRoute>
+                    <WorkspaceGraphPage />
+                  </ProtectedRoute>
+                }
               />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
