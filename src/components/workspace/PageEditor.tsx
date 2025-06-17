@@ -288,7 +288,7 @@ const PageEditor = ({ page, onUpdatePage, pages, onDeletePage }: PageEditorProps
         <div className="w-full bg-white px-8 pt-6 pb-12">
           <SimpleMDE
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={setContent}
             placeholder="Start writing... Use markdown for formatting"
             className="w-full min-h-[400px] border-none shadow-none resize-none focus-visible:ring-0 text-[1.15rem] leading-[2.1] font-sans bg-white"
             style={{ fontFamily: 'Inter, Segoe UI, Arial, sans-serif', fontSize: '1.15rem', background: 'white', lineHeight: '2.1' }}
