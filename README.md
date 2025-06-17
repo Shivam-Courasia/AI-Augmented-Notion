@@ -49,6 +49,7 @@ Create a `.env` file in the root directory of the project and add the following 
 VITE_SUPABASE_URL="YOUR_SUPABASE_URL"
 VITE_SUPABASE_ANON_KEY="YOUR_SUPABASE_ANON_KEY"
 VITE_GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+VITE_HF_API_TOKEN=""
 ```
 
 *   **`VITE_SUPABASE_URL`** and **`VITE_SUPABASE_ANON_KEY`**: You can find these in your Supabase project settings under "API".
